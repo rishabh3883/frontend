@@ -28,15 +28,24 @@ const StudentDashboard = () => {
     const [messageInput, setMessageInput] = useState({}); // { complaintId: text }
     const [socket, setSocket] = useState(null);
 
-    useEffect(() => {
-        const newSocket = io('http://localhost:5000');
-        setSocket(newSocket);
+useEffect(() => {
+    const BASE_URL = import.meta.env.VITE_API_URL.replace('/api', '');
 
-        // Join Student Room
-        newSocket.emit('join-room', 'Student');
+    const newSocket = io(BASE_URL, {
+        transports: ['websocket'],
+        withCredentials: true,
+    });
 
-        return () => newSocket.close();
-    }, []);
+    setSocket(newSocket);
+
+    // Join Student Room
+    newSocket.emit('join-room', 'Student');
+
+    return () => {
+        newSocket.disconnect();
+    };
+}, []);
+
 
     useEffect(() => {
         fetchData();
