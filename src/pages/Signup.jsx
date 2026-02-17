@@ -108,8 +108,8 @@ const Signup = () => {
                                 <label className="label">Role</label>
                                 <select name="role" className="input-field appearance-none" onChange={handleChange} value={formData.role}>
                                     <option value="Student">Student</option>
-                                    <option value="Employee">Employee (Staff)</option>
-                                    <option value="Admin">Admin</option>
+                                    <option value="Employee">upcoming(Staff)</option>
+                                    <option value="Admin">upcoming</option>
                                 </select>
                             </div>
                         </div>
