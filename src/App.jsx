@@ -17,9 +17,12 @@ import StudentLibrary from './pages/student/StudentLibrary';
 import SecurityDashboard from './pages/security/Dashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 
+import EmergencyModal from './components/EmergencyModal';
+
 function App() {
   return (
     <AuthProvider>
+      <EmergencyModal />
       <Router>
         <Routes>
           <Route path="/" element={<Landing />} />

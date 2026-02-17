@@ -459,52 +459,118 @@ const ActionableTasks = ({ onCountChange }) => {
     const fetchTasks = async () => {
         try {
             const { data } = await API.get('/complaints');
-            const urgent = data.filter(c => c.status === 'Approved' || c.status === 'On The Way');
-            setTasks(urgent);
-            if (onCountChange) onCountChange(urgent.length);
+            // Filter out closed issues
+            const active = data.filter(c => c.status !== 'Resolved' && c.status !== 'Rejected');
+            setTasks(active);
+            if (onCountChange) onCountChange(active.length);
         } catch (err) { console.error(err); }
     };
 
-    if (tasks.length === 0) return null;
+    const studentRequests = tasks.filter(t => t.targetRole === 'staff');
+    const adminRequests = tasks.filter(t => t.targetRole === 'Admin');
+
+    if (tasks.length === 0) return (
+        <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-8 text-center">
+            <p className="text-indigo-400 font-bold">No active tasks assigned to you.</p>
+        </div>
+    );
+
+    const TaskCard = ({ task, isAdminReq }) => {
+        const isAssignedToMe = task.assignedTo === userId || (task.assignedTo?._id === userId);
+        const isUnassigned = !task.assignedTo;
+
+        // Get latest system message for context (AI assignments, escalations)
+        const latestSystemMsg = task.messages?.slice().reverse().find(m => m.role === 'System');
+
+        return (
+            <div key={task._id} className={`bg-white p-4 rounded-xl border-l-4 ${isAdminReq ? 'border-purple-500' : 'border-indigo-500'} shadow-sm hover:shadow-md transition-all`}>
+                <div className="flex justify-between items-start mb-2">
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded ${task.type === 'Emergency' ? 'bg-rose-100 text-rose-700 animate-pulse' : 'bg-slate-100 text-slate-600'}`}>
+                        {task.type}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400">
+                        {new Date(task.createdAt).toLocaleDateString()}
+                    </span>
+                </div>
+                <h3 className="font-bold text-slate-900 mb-1">{task.title}</h3>
+                <p className="text-xs text-slate-500 mb-3 line-clamp-2">{task.description}</p>
+
+                {/* AI / System Context Message */}
+                {latestSystemMsg && (
+                    <div className={`text-[10px] p-2 rounded border mb-2 ${latestSystemMsg.message.includes('AI ALERT') ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                        <span className="font-bold mr-1">🤖 SYSTEM:</span> {latestSystemMsg.message}
+                    </div>
+                )}
+
+                <div className="flex justify-between items-center mt-2">
+                    <div className="flex items-center gap-1">
+                        {isAssignedToMe ? (
+                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded flex items-center gap-1">
+                                <CheckCircle size={10} /> To Me
+                            </span>
+                        ) : (
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                                {task.assignedTo ? 'Assigned' : 'Unassigned'}
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="flex gap-2">
+                        {isUnassigned && (
+                            <button onClick={() => API.post(`/complaints/${task._id}/assign`).then(() => { alert("Accepted!"); fetchTasks(); })}
+                                className="bg-indigo-600 text-white text-[10px] font-bold px-3 py-1.5 rounded hover:bg-indigo-700 transition-colors">
+                                ACCEPT
+                            </button>
+                        )}
+                        {(task.status !== 'Resolved' && (isAssignedToMe || isUnassigned)) && (
+                            <button onClick={() => {
+                                if (window.confirm("Mark resolved?")) API.put(`/complaints/${task._id}/status`, { status: 'Resolved' }).then(() => { alert("Resolved!"); fetchTasks(); });
+                            }} className="bg-emerald-600 text-white text-[10px] font-bold px-3 py-1.5 rounded hover:bg-emerald-700 transition-colors">
+                                RESOLVE
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     return (
-        <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-6 relative overflow-hidden ring-4 ring-indigo-100/50 animate-pulse-slow">
-            <div className="flex items-center gap-3 mb-4 relative z-10">
-                <div className="bg-indigo-600 text-white p-2 rounded-lg animate-bounce">
-                    <ClipboardList size={24} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Student Requests Column */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                    <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600"><Users size={20} /></div>
+                    <h2 className="text-lg font-bold text-slate-800">Student Requests</h2>
+                    <span className="bg-slate-100 text-slate-600 text-xs font-bold px-2 py-1 rounded-full">{studentRequests.length}</span>
                 </div>
-                <h2 className="text-xl font-bold text-indigo-700">Assigned Actions & Requests</h2>
+                <div className="space-y-3">
+                    {studentRequests.length > 0 ? (
+                        studentRequests.map(task => <TaskCard key={task._id} task={task} isAdminReq={false} />)
+                    ) : (
+                        <div className="p-8 text-center text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+                            No direct requests from students.
+                        </div>
+                    )}
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
-                {tasks.map(task => {
-                    const isAssignedToMe = task.assignedTo === userId || (task.assignedTo?._id === userId);
-                    const isUnassigned = task.status === 'Approved';
-
-                    if (!isUnassigned && !isAssignedToMe) return null;
-
-                    return (
-                        <div key={task._id} className="bg-white p-4 rounded-xl border-l-4 border-rose-500 shadow-sm">
-                            <h3 className="font-bold text-slate-900 mb-1">{task.title}</h3>
-                            <p className="text-xs text-slate-500 mb-3">{task.description}</p>
-                            <div className="flex justify-between items-center">
-                                <span className={`text-[10px] font-bold px-2 py-1 rounded ${task.type === 'Emergency' ? 'bg-rose-100 text-rose-700 animate-pulse' : 'bg-indigo-100 text-indigo-700'}`}>{task.type === 'Emergency' ? 'URGENT' : 'ASSIGNED'}</span>
-                                {isUnassigned && (
-                                    <button onClick={() => API.post(`/complaints/${task._id}/assign`).then(() => { alert("Accepted!"); fetchTasks(); })} className="bg-rose-600 text-white text-xs font-bold px-3 py-1.5 rounded hover:bg-rose-700 transition-colors">
-                                        ACCEPT
-                                    </button>
-                                )}
-                                {task.status === 'On The Way' && isAssignedToMe && (
-                                    <button onClick={() => {
-                                        if (window.confirm("Mark resolved?")) API.put(`/complaints/${task._id}/status`, { status: 'Resolved' }).then(() => { alert("Resolved!"); fetchTasks(); });
-                                    }} className="bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded hover:bg-emerald-700 transition-colors">
-                                        MARK RESOLVED
-                                    </button>
-                                )}
-                            </div>
+            {/* Admin Assignments Column */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                    <div className="bg-purple-100 p-2 rounded-lg text-purple-600"><Megaphone size={20} /></div>
+                    <h2 className="text-lg font-bold text-slate-800">Admin Assignments</h2>
+                    <span className="bg-slate-100 text-slate-600 text-xs font-bold px-2 py-1 rounded-full">{adminRequests.length}</span>
+                </div>
+                <div className="space-y-3">
+                    {adminRequests.length > 0 ? (
+                        adminRequests.map(task => <TaskCard key={task._id} task={task} isAdminReq={true} />)
+                    ) : (
+                        <div className="p-8 text-center text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+                            No assignments from Admin.
                         </div>
-                    );
-                })}
+                    )}
+                </div>
             </div>
         </div>
     );

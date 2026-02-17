@@ -731,6 +731,11 @@ const AdminDashboard = () => {
                                                 {/* Report Details */}
                                                 <h4 className="font-bold text-sm text-slate-800 mt-1">{c.title}</h4>
                                                 <p className="text-xs text-slate-600 line-clamp-1 mb-2">{c.description}</p>
+                                                {c.assignedTo && (
+                                                    <div className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-flex items-center gap-1 mb-2">
+                                                        <Users size={12} /> Assigned to: {c.assignedTo.name}
+                                                    </div>
+                                                )}
 
                                                 {/* Evidence Photo */}
                                                 {c.imageUrl && (

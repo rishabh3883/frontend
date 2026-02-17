@@ -6,8 +6,10 @@ import { useNavigate } from 'react-router-dom';
 import {
     LayoutDashboard, FileText, BookOpen, Calendar, Settings, LogOut,
     Menu, Bell, User, ChevronRight, Camera, XCircle, CheckCircle,
-    Clock, Plus, Flame, Trophy, AlertTriangle, MapPin, Search
+    Clock, Plus, Flame, Trophy, AlertTriangle, MapPin, Search,
+    MessageSquare, Send, ShieldAlert
 } from 'lucide-react';
+import { io } from 'socket.io-client';
 import StudentEvents from './StudentEvents';
 import StudentLibrary from './StudentLibrary';
 
@@ -22,7 +24,19 @@ const StudentDashboard = () => {
     // Form State
     const [showForm, setShowForm] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [newComplaint, setNewComplaint] = useState({ type: 'Leakage', title: '', description: '', image: null });
+    const [newComplaint, setNewComplaint] = useState({ type: 'Leakage', title: '', description: '', image: null, targetRole: 'staff' });
+    const [messageInput, setMessageInput] = useState({}); // { complaintId: text }
+    const [socket, setSocket] = useState(null);
+
+    useEffect(() => {
+        const newSocket = io('http://localhost:5000');
+        setSocket(newSocket);
+
+        // Join Student Room
+        newSocket.emit('join-room', 'Student');
+
+        return () => newSocket.close();
+    }, []);
 
     useEffect(() => {
         fetchData();
@@ -90,6 +104,7 @@ const StudentDashboard = () => {
         formData.append('type', newComplaint.type);
         formData.append('title', newComplaint.title);
         formData.append('description', newComplaint.description);
+        formData.append('targetRole', newComplaint.targetRole);
         if (newComplaint.image) formData.append('image', newComplaint.image);
 
         try {
@@ -110,9 +125,40 @@ const StudentDashboard = () => {
             formData.append('title', 'SECURITY ALERT');
             formData.append('description', 'Emergency assistance required immediately!');
             await API.post('/complaints', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+
+            // Trigger Socket Alarm
+            if (socket) {
+                socket.emit('test-trigger-alarm', {
+                    title: 'STUDENT EMERGENCY',
+                    description: `Emergency reported by ${user.name}`,
+                    location: 'Unknown Location (GPS pending)',
+                    studentId: user.id
+                });
+            }
+
             alert('🚨 ALARM SENT! Staff notified.');
             fetchData();
         } catch (err) { alert('Alarm Failed'); }
+    };
+
+    const handleEscalate = async (id) => {
+        if (!window.confirm("Escalate to Admin?")) return;
+        try {
+            await API.post(`/complaints/${id}/escalate`);
+            alert("Complaint Escalated!");
+            fetchData();
+        } catch (err) {
+            alert(err.response?.data?.message || "Escalation Failed");
+        }
+    };
+
+    const handleSendMessage = async (id) => {
+        if (!messageInput[id]) return;
+        try {
+            await API.post(`/complaints/${id}/message`, { message: messageInput[id] });
+            setMessageInput({ ...messageInput, [id]: '' });
+            fetchData();
+        } catch (err) { console.error(err); }
     };
 
     return (
@@ -247,7 +293,10 @@ const StudentDashboard = () => {
                                                     <h4 className="font-bold text-slate-800 text-sm">{c.title}</h4>
                                                     <p className="text-xs text-slate-500 line-clamp-1">{c.description}</p>
                                                 </div>
-                                                <span className="text-xs font-bold px-2 py-1 bg-slate-50 text-slate-500 rounded border border-slate-200">{c.status}</span>
+
+                                                <span className={`text-xs font-bold px-2 py-1 bg-slate-50 rounded border border-slate-200 ${c.escalated ? 'text-rose-600 border-rose-200' : 'text-slate-500'}`}>
+                                                    {c.escalated ? 'ESCALATED' : c.status}
+                                                </span>
                                             </div>
                                         ))
                                     )}
@@ -306,7 +355,43 @@ const StudentDashboard = () => {
                                         <p className="text-sm text-slate-500 mb-4 line-clamp-2">{c.description}</p>
                                         <div className="pt-3 border-t border-slate-100 flex justify-between items-center text-xs text-slate-400">
                                             <span>{new Date(c.createdAt).toLocaleDateString()}</span>
+                                            {c.assignedTo && <span className="text-emerald-600 font-bold bg-emerald-50 px-2 py-1 rounded flex items-center gap-1" title={c.assignedTo.email}><User size={12} /> {c.assignedTo.name} <span className="text-[9px] opacity-70">({c.assignedTo.email})</span></span>}
                                             {c.adminComment && <span className="text-indigo-600 font-bold bg-indigo-50 px-2 py-1 rounded">Admin Replied</span>}
+                                            {c.escalated && <span className="text-rose-600 font-bold bg-rose-50 px-2 py-1 rounded flex items-center gap-1"><ShieldAlert size={12} /> Escalated</span>}
+                                        </div>
+
+                                        {/* Actions: Escalate & Message */}
+                                        <div className="mt-4 pt-3 border-t border-slate-100 space-y-3">
+                                            {/* Chat Messages Preview */}
+                                            {c.messages && c.messages.length > 0 && (
+                                                <div className="bg-slate-50 p-2 rounded-lg text-xs space-y-1 max-h-24 overflow-y-auto">
+                                                    {c.messages.map((msg, i) => (
+                                                        <div key={i} className={`flex gap-1 ${msg.role === 'Student' ? 'justify-end' : 'justify-start'}`}>
+                                                            <span className={`px-2 py-1 rounded-md ${msg.role === 'Student' ? 'bg-indigo-100 text-indigo-700' : 'bg-white border'}`}>
+                                                                <span className="font-bold block text-[9px] uppercase opacity-70">{msg.role}</span>
+                                                                {msg.message}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Message Admin/Staff..."
+                                                    className="flex-1 text-xs p-2 bg-slate-50 border rounded-lg"
+                                                    value={messageInput[c._id] || ''}
+                                                    onChange={(e) => setMessageInput({ ...messageInput, [c._id]: e.target.value })}
+                                                />
+                                                <button onClick={() => handleSendMessage(c._id)} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100"><Send size={14} /></button>
+                                            </div>
+
+                                            {c.status === 'Pending' && !c.escalated && (Date.now() - new Date(c.createdAt).getTime() > 2 * 60 * 1000) && (
+                                                <button onClick={() => handleEscalate(c._id)} className="w-full py-2 bg-amber-50 text-amber-600 text-xs font-bold rounded-lg border border-amber-100 hover:bg-amber-100 flex items-center justify-center gap-2">
+                                                    <AlertTriangle size={14} /> Long Wait? Escalate to Admin
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -354,11 +439,19 @@ const StudentDashboard = () => {
                             </div>
                             <form onSubmit={handleSubmit} className="p-6 space-y-4">
                                 <div>
+
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Issue Type</label>
-                                    <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
-                                        value={newComplaint.type} onChange={e => setNewComplaint({ ...newComplaint, type: e.target.value })}>
-                                        <option>Leakage</option><option>Electricity</option><option>Cleanliness</option><option>WiFi / Network</option><option>Furniture</option><option>Other</option>
-                                    </select>
+                                    <div className="flex gap-2 mb-2">
+                                        <select className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
+                                            value={newComplaint.type} onChange={e => setNewComplaint({ ...newComplaint, type: e.target.value })}>
+                                            <option>Leakage</option><option>Electricity</option><option>Cleanliness</option><option>WiFi / Network</option><option>Furniture</option><option>Other</option>
+                                        </select>
+                                        <select className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
+                                            value={newComplaint.targetRole} onChange={e => setNewComplaint({ ...newComplaint, targetRole: e.target.value })}>
+                                            <option value="staff">To Staff</option>
+                                            <option value="Admin">To Admin</option>
+                                        </select>
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Location</label>
