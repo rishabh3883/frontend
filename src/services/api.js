@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const API = axios.create({
-    baseURL: 'http://localhost:5000/api',
+    baseURL: 'https://backend-production-eae7.up.railway.app/api',
 });
 
 // Add token to every request
