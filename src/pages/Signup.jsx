@@ -36,7 +36,7 @@ const Signup = () => {
         }
 
         try {
-            await API.post('/auth/signup', payload);
+            await API.post('/auth/register', payload);
             setSuccess(true);
             setTimeout(() => navigate('/login'), 2000);
         } catch (err) {
